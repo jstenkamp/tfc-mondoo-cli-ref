@@ -1,0 +1,49 @@
+# Example GitHub Action to scan a Terraform config
+# See https://github.com/mondoohq/actions/tree/main/terraform-hcl for additional usage information.
+
+name: mondoo-cnspec-scan
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+      - name: where am I
+        run: pwd && ls -la
+      - name: Scan HCL with cnspec
+        uses: mondoohq/actions/terraform-hcl@main
+        with:
+          service-account-credentials: ${{ secrets.MONDOO_CONFIG_BASE64 }}
+          score-threshold: "75"
+          path: "./"
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          cli_config_credentials_token: ${{ secrets.TFC_TOKEN }}
+      - name: TF init 
+        run: terraform init 
+      - id: plan
+        run: | 
+          terraform plan -no-color -out plan.tfplan
+          terraform show -json plan.tfplan >> plan.json
+        continue-on-error: true
+
+      - name: take a look
+        run: pwd && ls -la
+      
+      - name: Scan TF Plan with cnspec
+        uses: mondoohq/actions/terraform-plan@main
+        with:
+          service-account-credentials: ${{ secrets.MONDOO_CONFIG_BASE64 }}
+          score-threshold: 80
+          path: "./"
+          plan-file: plan.json
+
+      - name: Terraform APPPLY
+        run: |
+          terraform apply plan.tfplan
